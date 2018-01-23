@@ -66,10 +66,14 @@ import (
 type plugin struct {
 	*generator.Generator
 	generator.PluginImports
-	regexPkg      generator.Single
-	fmtPkg        generator.Single
-	protoPkg      generator.Single
-	validatorPkg  generator.Single
+	regexPkg     generator.Single
+	fmtPkg       generator.Single
+	protoPkg     generator.Single
+	validatorPkg generator.Single
+	regenPkg     generator.Single
+	randPkg      generator.Single
+	timePkg      generator.Single
+
 	useGogoImport bool
 }
 
@@ -93,6 +97,9 @@ func (p *plugin) Generate(file *generator.FileDescriptor) {
 	p.regexPkg = p.NewImport("regexp")
 	p.fmtPkg = p.NewImport("fmt")
 	p.validatorPkg = p.NewImport("github.com/mwitkow/go-proto-validators")
+	p.regenPkg = p.NewImport("github.com/zach-klippenstein/goregen")
+	p.randPkg = p.NewImport("math/rand")
+	p.timePkg = p.NewImport("time")
 
 	for _, msg := range file.Messages() {
 		if msg.DescriptorProto.GetOptions().GetMapEntry() {
@@ -101,6 +108,7 @@ func (p *plugin) Generate(file *generator.FileDescriptor) {
 		p.generateRegexVars(file, msg)
 		if gogoproto.IsProto3(file.FileDescriptorProto) {
 			p.generateProto3Message(file, msg)
+			p.generateProto3Fuzz(file, msg)
 		} else {
 			p.generateProto2Message(file, msg)
 		}
@@ -204,7 +212,7 @@ func (p *plugin) generateProto2Message(file *generator.FileDescriptor, message *
 			p.generateIntValidator(variableName, ccTypeName, fieldName, fieldValidator)
 		} else if p.isSupportedFloat(field) {
 			p.generateFloatValidator(variableName, ccTypeName, fieldName, fieldValidator)
-		} else if (field.IsBytes()) {
+		} else if field.IsBytes() {
 			p.generateLengthValidator(variableName, ccTypeName, fieldName, fieldValidator)
 		} else if field.IsMessage() {
 			if repeated && nullable {
@@ -230,6 +238,25 @@ func (p *plugin) generateProto2Message(file *generator.FileDescriptor, message *
 		}
 	}
 	p.P(`return nil`)
+	p.Out()
+	p.P(`}`)
+}
+
+func (p *plugin) generateProto3Fuzz(file *generator.FileDescriptor, message *generator.Descriptor) {
+	ccTypeName := generator.CamelCaseSlice(message.TypeName())
+	p.P(`func (this *`, ccTypeName, `) Fuzz() {`)
+	p.In()
+	for _, field := range message.Field {
+		fieldValidator := getFieldValidatorIfAny(field)
+		if fieldValidator == nil && !field.IsMessage() {
+			continue
+		}
+		fieldName := p.GetOneOfFieldName(message, field)
+		variableName := "this." + fieldName
+		if field.IsString() {
+			p.generateRegexFuzz(variableName, ccTypeName, fieldName, fieldValidator)
+		}
+	}
 	p.Out()
 	p.P(`}`)
 }
@@ -282,7 +309,7 @@ func (p *plugin) generateProto3Message(file *generator.FileDescriptor, message *
 			p.generateIntValidator(variableName, ccTypeName, fieldName, fieldValidator)
 		} else if p.isSupportedFloat(field) {
 			p.generateFloatValidator(variableName, ccTypeName, fieldName, fieldValidator)
-		} else if (field.IsBytes()) {
+		} else if field.IsBytes() {
 			p.generateLengthValidator(variableName, ccTypeName, fieldName, fieldValidator)
 		} else if field.IsMessage() {
 			if p.validatorWithMessageExists(fieldValidator) {
@@ -460,6 +487,14 @@ func (p *plugin) generateFloatValidator(variableName string, ccTypeName string, 
 	}
 }
 
+func (p *plugin) generateRegexFuzz(variableName string, ccTypeName string, fieldName string, fv *validator.FieldValidator) {
+	if fv.Regex != nil {
+		p.regexName(ccTypeName, fieldName)
+		p.P(`generator, _ := ` + p.regenPkg.Use() + `.NewGenerator(` + p.regexName(ccTypeName, fieldName) + `.String(), &` + p.regenPkg.Use() + `.GeneratorArgs{ RngSource: ` + p.randPkg.Use() + `.NewSource(` + p.timePkg.Use() + `.Now().UTC().UnixNano()), })`)
+		p.P(variableName + ` = generator.Generate()`)
+	}
+}
+
 func (p *plugin) generateStringValidator(variableName string, ccTypeName string, fieldName string, fv *validator.FieldValidator) {
 	if fv.Regex != nil {
 		p.P(`if !`, p.regexName(ccTypeName, fieldName), `.MatchString(`, variableName, `) {`)
@@ -587,5 +622,5 @@ func (p *plugin) validatorWithNonRepeatedConstraint(fv *validator.FieldValidator
 }
 
 func (p *plugin) regexName(ccTypeName string, fieldName string) string {
-	return "_regex_" + ccTypeName + "_" + fieldName
+	return "Regex_" + ccTypeName + "_" + fieldName
 }
