@@ -493,8 +493,12 @@ func (p *plugin) generateFloatValidator(variableName string, ccTypeName string, 
 func (p *plugin) generateRegexFuzz(variableName string, ccTypeName string, fieldName string, fv *validator.FieldValidator) {
 	if fv.Regex != nil {
 		p.regexName(ccTypeName, fieldName)
-		p.P(`generator, _ := ` + p.regenPkg.Use() + `.NewGenerator(` + p.regexName(ccTypeName, fieldName) + `.String(), &` + p.regenPkg.Use() + `.GeneratorArgs{ RngSource: c, })`)
-		p.P(variableName + ` = generator.Generate()`)
+		p.P(`g, _ := ` + p.regenPkg.Use() + `.NewGenerator(` + p.regexName(ccTypeName, fieldName) + `.String(), &` + p.regenPkg.Use() + `.GeneratorArgs{`)
+		p.In()
+		p.P(`RngSource: c,`)
+		p.Out()
+		p.P(`})`)
+		p.P(variableName + ` = g.Generate()`)
 	}
 }
 
