@@ -249,6 +249,8 @@ func (p *plugin) generateProto3Fuzz(file *generator.FileDescriptor, message *gen
 	p.P(`func (this *`, ccTypeName, `) Fuzz(c `+p.fuzzPkg.Use()+`.Continue) {`)
 	p.In()
 	p.P(`c.FuzzNoCustom(this)`)
+	p.P(`var g ` + p.regenPkg.Use() + `.Generator`)
+	p.P(`var _ = g // Reference g to suppress errors if it is not otherwise used.`)
 	for _, field := range message.Field {
 		fieldValidator := getFieldValidatorIfAny(field)
 		if fieldValidator == nil && !field.IsMessage() {
@@ -493,7 +495,7 @@ func (p *plugin) generateFloatValidator(variableName string, ccTypeName string, 
 func (p *plugin) generateRegexFuzz(variableName string, ccTypeName string, fieldName string, fv *validator.FieldValidator) {
 	if fv.Regex != nil {
 		p.regexName(ccTypeName, fieldName)
-		p.P(`g, _ := ` + p.regenPkg.Use() + `.NewGenerator(` + p.regexName(ccTypeName, fieldName) + `.String(), &` + p.regenPkg.Use() + `.GeneratorArgs{`)
+		p.P(`g, _ = ` + p.regenPkg.Use() + `.NewGenerator(` + p.regexName(ccTypeName, fieldName) + `.String(), &` + p.regenPkg.Use() + `.GeneratorArgs{`)
 		p.In()
 		p.P(`RngSource: c,`)
 		p.Out()
