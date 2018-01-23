@@ -73,6 +73,7 @@ type plugin struct {
 	regenPkg     generator.Single
 	randPkg      generator.Single
 	timePkg      generator.Single
+	fuzzPkg      generator.Single
 
 	useGogoImport bool
 }
@@ -100,6 +101,7 @@ func (p *plugin) Generate(file *generator.FileDescriptor) {
 	p.regenPkg = p.NewImport("github.com/zach-klippenstein/goregen")
 	p.randPkg = p.NewImport("math/rand")
 	p.timePkg = p.NewImport("time")
+	p.fuzzPkg = p.NewImport("github.com/google/gofuzz")
 
 	for _, msg := range file.Messages() {
 		if msg.DescriptorProto.GetOptions().GetMapEntry() {
@@ -244,8 +246,9 @@ func (p *plugin) generateProto2Message(file *generator.FileDescriptor, message *
 
 func (p *plugin) generateProto3Fuzz(file *generator.FileDescriptor, message *generator.Descriptor) {
 	ccTypeName := generator.CamelCaseSlice(message.TypeName())
-	p.P(`func (this *`, ccTypeName, `) Fuzz() {`)
+	p.P(`func (this *`, ccTypeName, `) Fuzz(c `+p.fuzzPkg.Use()+`.Continue) {`)
 	p.In()
+	p.P(`c.FuzzNoCustom(this)`)
 	for _, field := range message.Field {
 		fieldValidator := getFieldValidatorIfAny(field)
 		if fieldValidator == nil && !field.IsMessage() {
